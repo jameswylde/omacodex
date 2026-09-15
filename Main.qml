@@ -9,6 +9,10 @@ Panel {
     id: root
     moduleName: "omacodex.usage"
     ipcTarget: "omacodex.usage"
+    manageIpc: false
+    readonly property color foreground: bar ? bar.foreground : Color.foreground
+    readonly property color dim: Qt.darker(foreground, 1.5)
+    readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
     implicitWidth: button.implicitWidth
     implicitHeight: button.implicitHeight
     property var snapshot: ({})
@@ -76,6 +80,9 @@ Panel {
         anchors.fill: parent
         bar: root.bar
         tooltipText: "Codex usage"
+        // SVG artwork fills its canvas; font glyphs leave internal whitespace.
+        // Match their visible size while retaining the standard icon slot.
+        opticalSize: Style.bar.iconFont * 0.85
         iconComponent: Component {
             Logo { source: Qt.resolvedUrl("assets/chatgpt.svg"); color: button.foreground }
         }
@@ -92,8 +99,9 @@ Panel {
         bar: root.bar
         open: root.opened
         focusTarget: keys
-        contentWidth: fittedContentWidth(Style.space(350))
-        contentHeight: fittedContentHeight(content.implicitHeight + footer.implicitHeight + Style.space(16), Style.space(670))
+        contentWidth: fittedContentWidth(Style.space(440))
+        contentHeight: fittedContentHeight(content.implicitHeight + footer.implicitHeight + header.height
+                                          + scroller.anchors.topMargin + scroller.anchors.bottomMargin, Style.space(760))
         PanelKeyCatcher {
             id: keys
             anchors.fill: parent
@@ -104,9 +112,62 @@ Panel {
             onMoveRequested: function(dx, dy) {
                 scroller.contentY = Math.max(0, Math.min(scroller.contentHeight - scroller.height, scroller.contentY + dy * Style.space(48)))
             }
+            Item {
+                id: header
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: Math.max(heading.implicitHeight, refreshButton.implicitHeight)
+                Row {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Style.space(8)
+                    PanelSectionHeader {
+                        id: heading
+                        text: "CODEX"
+                        foreground: root.foreground
+                        fontFamily: root.fontFamily
+                        anchors.verticalCenter: parent.verticalCenter
+                    }
+                    BorderSurface {
+                        implicitWidth: plan.implicitWidth + Style.space(10)
+                        implicitHeight: plan.implicitHeight + Style.space(4)
+                        color: Util.alpha(root.dim, 0.1)
+                        borderSpec: Border.flat(Util.alpha(root.dim, 0.45), Style.normalBorderWidth)
+                        radius: Style.cornerRadius
+                        anchors.verticalCenter: parent.verticalCenter
+                        Text {
+                            id: plan
+                            anchors.centerIn: parent
+                            text: root.snapshot.plan || "ChatGPT"
+                            color: root.dim
+                            font.family: root.fontFamily
+                            font.pixelSize: Style.font.caption
+                            font.bold: true
+                        }
+                    }
+                }
+                PanelActionButton {
+                    id: refreshButton
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    iconText: "󰑐"
+                    tooltipText: "Sync usage and history  (r)"
+                    foreground: root.syncing ? Color.accent : root.foreground
+                    fontFamily: root.fontFamily
+                    enabled: !root.syncing
+                    onClicked: root.refresh()
+                    RotationAnimation on rotation {
+                        from: 0; to: 360; duration: 900; loops: Animation.Infinite
+                        running: root.syncing
+                    }
+                    onRotationChanged: if (!root.syncing && rotation !== 0) rotation = 0
+                }
+            }
             Flickable {
                 id: scroller
-                anchors.top: parent.top
+                anchors.top: header.bottom
+                anchors.topMargin: Style.space(10)
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: footer.top
@@ -122,9 +183,26 @@ Panel {
                     spacing: Style.space(12)
                     PanelHero {
                         title: "Codex"
-                        meta: root.snapshot.plan ? root.snapshot.plan.replace(/_/g, " ") : "ChatGPT account"
+                        meta: "Usage & activity"
+                        foreground: root.foreground
+                        fontFamily: root.fontFamily
                         iconComponent: Component {
-                            Logo { width: Style.space(38); height: width; source: Qt.resolvedUrl("assets/codex.svg"); color: Color.foreground }
+                            Item {
+                                implicitWidth: Style.space(44)
+                                implicitHeight: Style.space(44)
+                                BorderSurface {
+                                    anchors.fill: parent
+                                    color: Util.alpha(Color.accent, 0.10)
+                                    borderSpec: Border.flat(Util.alpha(Color.accent, 0.45), Style.normalBorderWidth)
+                                    radius: Style.cornerRadius
+                                }
+                                Logo {
+                                    anchors.centerIn: parent
+                                    width: Style.space(26); height: width
+                                    source: Qt.resolvedUrl("assets/codex.svg")
+                                    color: Color.accent
+                                }
+                            }
                         }
                     }
                     PanelSeparator { width: parent.width }
@@ -135,7 +213,7 @@ Panel {
                         textFormat: Text.PlainText
                         text: root.errorText || "Retrieving usage…"
                         color: root.errorText ? Color.urgent : Color.foreground
-                        font.family: Style.font.family
+                        font.family: root.fontFamily
                         font.pixelSize: Style.font.body
                         wrapMode: Text.Wrap
                     }
@@ -144,26 +222,37 @@ Panel {
                         UsageRow { required property var modelData; width: content.width; entry: modelData; nowMs: root.nowMs }
                     }
                     PanelSeparator { width: parent.width }
-                    PanelSectionHeader { text: "CREDITS" }
-                    Repeater {
-                        model: root.snapshot.credits || [{title: "Credits", value: "Not reported"}]
-                        Text {
-                            required property var modelData
-                            width: content.width
-                            textFormat: Text.PlainText
-                            text: modelData.title + "  ·  " + modelData.value
-                            color: Color.foreground
-                            font.family: Style.font.family
-                            font.pixelSize: Style.font.body
-                            wrapMode: Text.Wrap
-                        }
+                    TokenChart {
+                        width: parent.width
+                        activity: root.snapshot.activity || ({})
+                        foreground: root.foreground
+                        fontFamily: root.fontFamily
                     }
-                    Text {
-                        visible: root.snapshot.resetCredits !== null && root.snapshot.resetCredits !== undefined
-                        text: "Earned resets  ·  " + (root.snapshot.resetCredits || 0)
-                        color: Color.foreground
-                        font.family: Style.font.family
-                        font.pixelSize: Style.font.caption
+                    Grid {
+                        id: creditTiles
+                        width: parent.width
+                        columns: 2
+                        spacing: Style.space(8)
+                        Repeater {
+                            model: root.snapshot.credits || [{title: "Credits", value: "Not reported"}]
+                            StatTile {
+                                required property var modelData
+                                width: (creditTiles.width - creditTiles.spacing) / 2
+                                value: modelData.value
+                                label: modelData.title.toUpperCase()
+                                hot: Number(modelData.value) > 0 || modelData.value === "Unlimited" || modelData.value.indexOf("Available") === 0
+                                foreground: root.foreground
+                                fontFamily: root.fontFamily
+                            }
+                        }
+                        StatTile {
+                            width: (creditTiles.width - creditTiles.spacing) / 2
+                            value: root.snapshot.resetCredits === null || root.snapshot.resetCredits === undefined ? "–" : String(root.snapshot.resetCredits)
+                            label: "EARNED RESETS"
+                            hot: Number(root.snapshot.resetCredits) > 0
+                            foreground: root.foreground
+                            fontFamily: root.fontFamily
+                        }
                     }
                 }
             }
@@ -172,33 +261,21 @@ Panel {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                implicitHeight: Math.max(updated.implicitHeight, syncButton.implicitHeight)
+                implicitHeight: updated.implicitHeight + Style.space(8)
                 height: implicitHeight
                 Text {
                     id: updated
                     anchors.left: parent.left
-                    anchors.right: syncButton.left
+                    anchors.right: parent.right
                     anchors.rightMargin: Style.space(12)
                     anchors.verticalCenter: parent.verticalCenter
-                    text: root.lastUpdatedAt ? "Last update\n" + Qt.formatDateTime(new Date(root.lastUpdatedAt * 1000), "d MMM, HH:mm:ss") : "Last update\nNot synced"
-                    color: Color.foreground
-                    opacity: 0.65
-                    font.family: Style.font.family
+                    text: root.lastUpdatedAt ? "Updated " + Qt.formatDateTime(new Date(root.lastUpdatedAt * 1000), "d MMM, HH:mm:ss") : "Not synced"
+                    color: root.dim
+                    font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
                     wrapMode: Text.Wrap
                 }
-                Button {
-                    id: syncButton
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.syncing ? "Syncing…" : "Sync"
-                    iconText: "󰑓"
-                    iconSpinning: root.syncing
-                    enabled: !root.syncing
-                    bordered: true
-                    tooltipText: "Refresh usage (R)"
-                    onClicked: root.refresh()
-                }
+
             }
         }
     }

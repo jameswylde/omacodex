@@ -9,6 +9,24 @@ spec.loader.exec_module(usage)
 
 
 class UsageTests(unittest.TestCase):
+    def test_activity_sorts_history_and_preserves_zero(self):
+        result = usage.normalize_activity({"dailyUsageBuckets": [
+            {"startDate": "2026-08-25", "tokens": 0},
+            {"startDate": "2026-08-19", "tokens": 152700009},
+            {"startDate": "2026-08-19", "tokens": 152700009},
+            {"startDate": "2026-02-30", "tokens": 1},
+            {"startDate": "2099-01-01", "tokens": 1},
+            {"startDate": "2026-08-20", "tokens": -1}],
+            "summary": {"lifetimeTokens": 1449043346, "peakDailyTokens": None, "secret": "ignored"}})
+        self.assertEqual(result["days"], [{"date": "2026-08-19", "tokens": 152700009},
+                                          {"date": "2026-08-25", "tokens": 0}])
+        self.assertEqual(result["summary"], {"lifetimeTokens": 1449043346})
+
+    def test_missing_activity_is_not_zero_usage(self):
+        result = usage.normalize_activity({"dailyUsageBuckets": None, "summary": None})
+        self.assertEqual(result["days"], [])
+        self.assertEqual(result["summary"], {})
+
     def test_multiple_buckets_and_unknowns(self):
         result = usage.normalize({"rateLimits": {"limitId": "codex", "primary": None},
             "rateLimitsByLimitId": {
@@ -19,8 +37,26 @@ class UsageTests(unittest.TestCase):
         self.assertEqual(rows["Weekly"]["usedPercent"], 12)
         self.assertIsNone(rows["Session"]["usedPercent"])
         self.assertEqual(rows["Code Review · Weekly"]["usedPercent"], 0)
-        self.assertEqual(rows["Spark · Session"]["detail"], "5h window")
+        self.assertFalse(any("Spark" in title for title in rows))
         self.assertEqual(result["credits"][0]["value"], "Not reported")
+
+    def test_session_and_hidden_unavailable_review(self):
+        result = usage.normalize({"rateLimits": {"primary": {
+            "usedPercent": 27, "windowDurationMins": 300}}})
+        rows = {row["title"]: row for row in result["rows"]}
+        self.assertEqual(rows["Session"]["usedPercent"], 27)
+        self.assertEqual(rows["Session"]["detail"], "5h window")
+        self.assertFalse(any("Review" in title for title in rows))
+
+    def test_weekly_primary_is_not_mislabeled_session(self):
+        result = usage.normalize({"rateLimits": {"primary": {
+            "usedPercent": 3, "windowDurationMins": 10080}, "secondary": None},
+            "rateLimitsByLimitId": {"codex_bengalfox": {
+                "primary": {"usedPercent": 90, "windowDurationMins": 300}}}})
+        rows = {row["title"]: row for row in result["rows"]}
+        self.assertEqual(set(rows), {"Session", "Weekly"})
+        self.assertIsNone(rows["Session"]["usedPercent"])
+        self.assertEqual(rows["Weekly"]["usedPercent"], 3)
 
     def test_credits_and_reset_count(self):
         for credits, expected in [({"unlimited": True}, "Unlimited"),

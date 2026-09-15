@@ -4,8 +4,8 @@ A native Omarchy shell bar plugin for ChatGPT Codex subscription usage.
 
 The bar displays the ChatGPT knot. Clicking it opens a panel with the Codex
 logo and title, Session and Weekly usage bars, additional reported quota
-buckets (such as Spark or Code Review), credits, earned resets, the last
-successful update time and a Sync button.
+buckets (such as Code Review when available), credits, earned resets, a seven-day
+token chart, the last successful update time and a header Sync button.
 
 ## Requirements
 
@@ -34,22 +34,44 @@ omarchy plugin update omacodex.usage
 ## Use
 
 - Click the ChatGPT icon to toggle the panel.
-- Click **Sync**, middle-click the bar icon, or press **R**, **Enter** or
+- Click the **refresh icon at the top right**, middle-click the bar icon, or press **R**, **Enter** or
   **Space** while the panel is focused to refresh.
 - **Escape** or clicking outside closes the panel. Arrow keys scroll.
 - The footer stays visible when extra quota buckets require scrolling.
 - Sync runs every five minutes and when opening a panel older than one
   minute. The widget's Omarchy settings expose `refreshIntervalSec` (60–3600).
-- Bars show **percentage used**. Reset times use the desktop's local timezone.
+- Bars show **percentage remaining**, with the percentage on the left and the reset date on the right (`DD/MM/YYYY HH:mm`, desktop local timezone).
 
 The panel uses Omarchy's own `Panel`, `KeyboardPanel`, `BarIconButton`,
 `PanelHero`, `Button`, spacing, font and colour tokens, including live theme
 changes. It supports horizontal and vertical bars.
 
+Styling follows Wypr: a compact header and plan pill, icon-only sync action,
+tinted logo tile, subtle bordered statistics and a muted update footer.
+
+### Token history
+
+The chart fetches all historical daily totals returned by ChatGPT and displays
+seven calendar days at a time. It initially ends on the latest reported date;
+the displayed date range identifies the selected historical week. Use the
+arrows to browse older/newer weeks, **Today** for the current seven days, and
+**Latest** to return to the latest reported week. Hover a bar for its exact
+token count and date. Lifetime and peak-day totals appear beneath the chart.
+
+Missing days are marked with a dash, not counted as zero. A returned zero is
+displayed as zero. Chart totals sum only the reported days. Dates retain the server's
+calendar-day labels; reset timestamps use the desktop's timezone.
+
+History is fetched from `account/usage/read`; there are no historical-range or
+pagination parameters in the installed protocol. The chart can browse every
+daily bucket the service supplies, but cannot backfill dates the service omits.
+History remains in memory and is refreshed with quotas. If history fails to
+load, quota values still work and the chart shows an error.
+
 ## Data and authentication
 
 `usage.py` launches `codex app-server`, initializes its JSON-RPC connection,
-and calls only `account/read` and `account/rateLimits/read`. Codex manages
+and calls only `account/read`, `account/rateLimits/read` and `account/usage/read`. Codex manages
 authentication, including its configured credential storage and `CODEX_HOME`.
 There is no separate API key, browser-cookie extraction, inference request,
 or paid credit redemption. Each installation shows its signed-in account.
@@ -62,12 +84,15 @@ temporary app server is stopped after each probe.
 
 ### Missing values and model limits
 
-The service decides which buckets it exposes. Missing Session, Weekly,
-Code Review or credit values display **Not reported**, never an invented
-zero. A separate Code Review bar is populated only if Codex returns that
-bucket. The widget does not infer limits from local session token totals.
+The service decides which buckets it exposes. Missing Session, Weekly or
+credit values are marked as unavailable, never an invented zero. Some accounts
+report only a shared weekly quota, with no separate session window. The widget
+uses each window's duration, rather than assuming the primary window is Session.
+A Code Review bar appears only if Codex returns that bucket; there is no empty
+placeholder. Spark quotas are excluded. The widget does not infer limits from
+local session token totals.
 
-All returned buckets are handled dynamically, including model-specific
+Other returned buckets are handled dynamically, including model-specific
 session/weekly windows and individual spending limits. Shared and per-model
 allowances are not added together. Credit balances are displayed as credits,
 not converted into money. Earned resets are shown separately and cannot be
@@ -87,6 +112,7 @@ for displayed limits.
 cd ~/.config/omarchy/plugins/omacodex.usage
 omarchy plugin validate .
 python3 -m unittest discover -s tests -v
+node tests/test_chart.cjs # Optional developer check; Node is not required by the plugin.
 python3 usage.py
 ```
 

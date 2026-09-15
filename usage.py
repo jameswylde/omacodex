@@ -7,6 +7,7 @@ import selectors
 import shutil
 import subprocess
 import time
+from datetime import date
 
 
 class UsageError(Exception):
@@ -84,6 +85,8 @@ def normalize(result):
         if not isinstance(bucket, dict):
             continue
         name = bucket.get("limitName") or bucket.get("normalModelSlug") or key.replace("_", " ").replace("-", " ").title()
+        if key == "codex_bengalfox" or "spark" in (key + " " + name).lower():
+            continue
         review = "review" in (key + " " + name).lower()
         plan = plan or bucket.get("planType") or ""
         for slot in ("primary", "secondary"):
@@ -108,15 +111,35 @@ def normalize(result):
             rows.append({"title": name + " · Spending limit", "usedPercent": max(0, min(100, 100 - individual["remainingPercent"])),
                          "resetsAt": individual.get("resetsAt"), "detail": "Individual allowance"})
     if not any(row["title"] == "Session" for row in rows):
-        rows.insert(0, {"title": "Session", "usedPercent": None, "detail": "Not reported by Codex"})
+        rows.insert(0, {"title": "Session", "usedPercent": None, "detail": "No session limit reported for this account"})
     if not any(row["title"] == "Weekly" for row in rows):
         rows.insert(1, {"title": "Weekly", "usedPercent": None, "detail": "Not reported by Codex"})
-    if not any(row["title"].startswith("Code Review") for row in rows):
-        rows.append({"title": "Code Review", "usedPercent": None, "detail": "Not reported by Codex"})
     resets = result.get("rateLimitResetCredits") or {}
     return {"ok": True, "updatedAt": int(time.time()), "plan": plan, "rows": rows,
             "credits": credit_rows or [{"title": "Credits", "value": "Not reported"}],
             "resetCredits": resets.get("availableCount")}
+
+
+def normalize_activity(result):
+    """Keep server calendar dates and distinguish absent days from zero usage."""
+    days = {}
+    for bucket in result.get("dailyUsageBuckets") or []:
+        if not isinstance(bucket, dict):
+            continue
+        day = bucket.get("startDate")
+        tokens = bucket.get("tokens")
+        try:
+            parsed = date.fromisoformat(day)
+        except (TypeError, ValueError):
+            continue
+        if parsed.isoformat() != day or parsed > date.today() or not numeric(tokens) or tokens < 0:
+            continue
+        days[day] = int(tokens)
+    summary = result.get("summary") or {}
+    fields = ("lifetimeTokens", "peakDailyTokens", "longestRunningTurnSec", "currentStreakDays", "longestStreakDays")
+    return {"available": True,
+            "days": [{"date": day, "tokens": days[day]} for day in sorted(days)],
+            "summary": {key: summary[key] for key in fields if numeric(summary.get(key)) and summary[key] >= 0}}
 
 
 def fetch():
@@ -130,7 +153,13 @@ def fetch():
         account = rpc.request("account/read").get("account")
         if not account or account.get("type") == "apiKey":
             raise UsageError("Run codex login with your ChatGPT account to see subscription usage.")
-        return normalize(rpc.request("account/rateLimits/read"))
+        snapshot = normalize(rpc.request("account/rateLimits/read"))
+        try:
+            snapshot["activity"] = normalize_activity(rpc.request("account/usage/read"))
+        except (UsageError, OSError, ValueError, TypeError, AttributeError):
+            snapshot["activity"] = {"available": False, "days": [], "summary": {},
+                                    "error": "Token history unavailable. Try syncing again."}
+        return snapshot
     finally:
         rpc.close()
 
