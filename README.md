@@ -18,15 +18,18 @@ successful update time and a Sync button.
 ## Install
 
 ```bash
-cd ~/omacodex
-bash install.sh
+omarchy plugin add https://github.com/jameswylde/omacodex.git --enable
 ```
 
-The installer validates the manifest, links this directory to
-`~/.config/omarchy/plugins/omacodex.usage`, rescans plugins and enables Codex
-in the right bar section. Keep this source directory in place. Existing
-unrelated plugins are not overwritten. For other users, clone/copy the
-project anywhere and run `bash install.sh` from there.
+Omarchy clones the repository, validates the plugin and installs it in
+`~/.config/omarchy/plugins/omacodex.usage`. Follow the prompts to confirm
+installation and choose its bar section; `--enable` enables it immediately.
+
+To update:
+
+```bash
+omarchy plugin update omacodex.usage
+```
 
 ## Use
 
@@ -81,6 +84,7 @@ for displayed limits.
 ## Validate and troubleshoot
 
 ```bash
+cd ~/.config/omarchy/plugins/omacodex.usage
 omarchy plugin validate .
 python3 -m unittest discover -s tests -v
 python3 usage.py
@@ -97,11 +101,10 @@ To disable:
 omarchy plugin disable omacodex.usage
 ```
 
-To remove the development link after disabling:
+To uninstall:
 
 ```bash
-unlink ~/.config/omarchy/plugins/omacodex.usage
-omarchy-shell shell rescanPlugins
+omarchy plugin remove omacodex.usage
 ```
 
 ## Licence
