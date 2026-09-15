@@ -73,7 +73,7 @@ def numeric(value):
 
 
 def normalize(result):
-    """Preserve all reported buckets; unavailable is never represented as zero."""
+    """Display non-Spark, non-session quotas; unavailable is never zero."""
     buckets = dict(result.get("rateLimitsByLimitId") or {})
     fallback = result.get("rateLimits") or {}
     if fallback:
@@ -94,7 +94,9 @@ def normalize(result):
             if not isinstance(window, dict) or not numeric(window.get("usedPercent")):
                 continue
             mins = window.get("windowDurationMins")
-            period = "Weekly" if mins == 10080 else ("Session" if numeric(mins) and 0 < mins < 1440 else "Limit")
+            if numeric(mins) and 0 < mins < 1440:
+                continue
+            period = "Weekly" if mins == 10080 else "Limit"
             duration = (f"{mins // 60:g}h window" if mins % 60 == 0 else f"{mins:g}m window") if numeric(mins) and mins > 0 else "Window not reported"
             title = period if key == "codex" else ("Code Review" if review else name) + " · " + period
             rows.append({"title": title, "usedPercent": max(0, min(100, window["usedPercent"])),
@@ -110,10 +112,8 @@ def normalize(result):
         if isinstance(individual, dict) and numeric(individual.get("remainingPercent")):
             rows.append({"title": name + " · Spending limit", "usedPercent": max(0, min(100, 100 - individual["remainingPercent"])),
                          "resetsAt": individual.get("resetsAt"), "detail": "Individual allowance"})
-    if not any(row["title"] == "Session" for row in rows):
-        rows.insert(0, {"title": "Session", "usedPercent": None, "detail": "No session limit reported for this account"})
     if not any(row["title"] == "Weekly" for row in rows):
-        rows.insert(1, {"title": "Weekly", "usedPercent": None, "detail": "Not reported by Codex"})
+        rows.insert(0, {"title": "Weekly", "usedPercent": None, "detail": "Not reported by Codex"})
     resets = result.get("rateLimitResetCredits") or {}
     return {"ok": True, "updatedAt": int(time.time()), "plan": plan, "rows": rows,
             "credits": credit_rows or [{"title": "Credits", "value": "Not reported"}],

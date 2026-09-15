@@ -35,18 +35,17 @@ class UsageTests(unittest.TestCase):
                 "code_review": {"secondary": {"usedPercent": 0, "windowDurationMins": 10080}}}})
         rows = {row["title"]: row for row in result["rows"]}
         self.assertEqual(rows["Weekly"]["usedPercent"], 12)
-        self.assertIsNone(rows["Session"]["usedPercent"])
         self.assertEqual(rows["Code Review · Weekly"]["usedPercent"], 0)
         self.assertFalse(any("Spark" in title for title in rows))
+        self.assertFalse(any("Session" in title for title in rows))
         self.assertEqual(result["credits"][0]["value"], "Not reported")
 
-    def test_session_and_hidden_unavailable_review(self):
+    def test_session_usage_is_not_displayed(self):
         result = usage.normalize({"rateLimits": {"primary": {
             "usedPercent": 27, "windowDurationMins": 300}}})
         rows = {row["title"]: row for row in result["rows"]}
-        self.assertEqual(rows["Session"]["usedPercent"], 27)
-        self.assertEqual(rows["Session"]["detail"], "5h window")
-        self.assertFalse(any("Review" in title for title in rows))
+        self.assertEqual(set(rows), {"Weekly"})
+        self.assertIsNone(rows["Weekly"]["usedPercent"])
 
     def test_weekly_primary_is_not_mislabeled_session(self):
         result = usage.normalize({"rateLimits": {"primary": {
@@ -54,8 +53,7 @@ class UsageTests(unittest.TestCase):
             "rateLimitsByLimitId": {"codex_bengalfox": {
                 "primary": {"usedPercent": 90, "windowDurationMins": 300}}}})
         rows = {row["title"]: row for row in result["rows"]}
-        self.assertEqual(set(rows), {"Session", "Weekly"})
-        self.assertIsNone(rows["Session"]["usedPercent"])
+        self.assertEqual(set(rows), {"Weekly"})
         self.assertEqual(rows["Weekly"]["usedPercent"], 3)
 
     def test_credits_and_reset_count(self):
