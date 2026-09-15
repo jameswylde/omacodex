@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "omacodex.usage",
+  "name": "Codex",
+  "version": "1.0.0",
+  "author": "omacodex",
+  "license": "MIT",
+  "description": "ChatGPT Codex subscription usage, quota windows and credits.",
+  "kinds": ["bar-widget"],
+  "activation": "on-demand",
+  "entryPoints": {"barWidget": "Main.qml"},
+  "barWidget": {
+    "displayName": "Codex",
+    "description": "Codex usage and credits with manual and automatic sync.",
+    "category": "AI",
+    "allowMultiple": false,
+    "defaults": {"refreshIntervalSec": 300},
+    "schema": [{"key": "refreshIntervalSec", "type": "integer", "label": "Refresh interval (seconds)", "min": 60, "max": 3600, "step": 60, "defaultValue": 300}]
+  }
+}
